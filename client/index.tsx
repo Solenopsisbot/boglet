@@ -99,6 +99,7 @@ export function App() {
   useEffect(() => { void seedSystemApps(); /* fire-and-forget; idempotent */ }, []);
 
   if (path === "/") return <Landing />;
+  if (path === "/capsules") return <PublicCapsules />;
   if (path === "/docs") return <Docs />;
   if (path === "/status") return <StatusPage />;
   if (path === "/built-on-boglet") return <BuiltOnBoglet />;
@@ -129,6 +130,7 @@ function Nav() {
           <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">[alpha]</span>
         </Link>
         <nav className="flex items-center gap-6 text-sm text-neutral-400">
+          <Link href="/capsules" className="hover:text-white">Capsules</Link>
           <Link href="/docs" className="hover:text-white">Docs</Link>
           <Link href="/status" className="hover:text-white">Status</Link>
           <a href="https://github.com/Solenopsisbot/boglet" target="_blank" rel="noopener noreferrer" className="hover:text-white">GitHub ↗</a>
@@ -154,6 +156,7 @@ function Footer() {
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Product</p>
           <ul className="space-y-2">
+            <li><Link href="/capsules" className="hover:text-white">Public capsules</Link></li>
             <li><Link href="/docs" className="hover:text-white">Documentation</Link></li>
             <li><Link href="/dashboard" className="hover:text-white">Dashboard</Link></li>
             <li><Link href="/status" className="hover:text-white">Status</Link></li>
@@ -278,6 +281,91 @@ function Landing() {
               </Link>
             </div>
           </div>
+        </section>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+// ---------- Public capsules ----------
+
+type PublicAppRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  region: string;
+  statusBadge: string;
+  createdAt: string;
+};
+
+function PublicCapsules() {
+  const apps = useQuery<PublicAppRow[]>("listPublicApps");
+  const liveCount = (apps || []).filter((app) => app.statusBadge === "live").length;
+
+  return (
+    <div className="min-h-screen bg-black text-white">
+      <Nav />
+      <main>
+        <section className="border-b border-neutral-900">
+          <div className="mx-auto max-w-6xl px-6 py-16 md:py-20">
+            <p className="mb-4 font-mono text-xs uppercase tracking-wider text-orange-400">Public directory</p>
+            <div className="grid gap-8 md:grid-cols-[1fr_280px] md:items-end">
+              <div>
+                <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight md:text-6xl">Preview public capsules.</h1>
+                <p className="mt-5 max-w-2xl text-base leading-relaxed text-neutral-400">
+                  A browseable shelf of Boglet capsules that are public, deployed, and ready to open in the sandboxed runner.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 border border-neutral-900 bg-neutral-950">
+                <div className="border-r border-neutral-900 p-4">
+                  <p className="text-3xl font-semibold">{apps ? apps.length : "—"}</p>
+                  <p className="mt-1 text-xs uppercase tracking-wider text-neutral-500">Listed</p>
+                </div>
+                <div className="p-4">
+                  <p className="text-3xl font-semibold">{apps ? liveCount : "—"}</p>
+                  <p className="mt-1 text-xs uppercase tracking-wider text-neutral-500">Live</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-6 py-12">
+          {!apps ? (
+            <div className="grid gap-3 md:grid-cols-3">
+              {[0, 1, 2, 3, 4, 5].map((n) => (
+                <div key={n} className="h-44 animate-pulse border border-neutral-900 bg-neutral-950" />
+              ))}
+            </div>
+          ) : apps.length === 0 ? (
+            <div className="border border-dashed border-neutral-800 p-12 text-center">
+              <p className="text-neutral-400">No public capsules are deployed yet.</p>
+              <Link href="/dashboard/new" className="mt-4 inline-block text-sm text-orange-400 hover:underline">Deploy one →</Link>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {apps.map((app) => (
+                <Link key={app.id} href={"/app/" + app.slug} className="group flex min-h-52 flex-col border border-neutral-900 bg-black p-5 hover:border-neutral-700">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-lg font-semibold text-white">{app.name}</h2>
+                      <p className="mt-1 truncate font-mono text-xs text-neutral-500">/app/{app.slug}</p>
+                    </div>
+                    <StatusDot status={app.statusBadge} />
+                  </div>
+                  <p className="mt-5 line-clamp-3 flex-1 text-sm leading-relaxed text-neutral-400">
+                    {app.description || <span className="text-neutral-700">No description yet.</span>}
+                  </p>
+                  <div className="mt-6 flex items-center justify-between border-t border-neutral-900 pt-4 text-xs text-neutral-600">
+                    <span>{app.region}</span>
+                    <span className="text-neutral-500 group-hover:text-white">Open →</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
       </main>
       <Footer />

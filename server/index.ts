@@ -244,6 +244,24 @@ export default capsule({
         .all();
     }),
 
+    listPublicApps: query((ctx) => {
+      return ctx.db.apps
+        .where("isPublic", true)
+        .orderBy("createdAt", "desc")
+        .all()
+        .filter((app) => app.activeDeployId)
+        .slice(0, 60)
+        .map((app) => ({
+          id: app.id,
+          slug: app.slug,
+          name: app.name,
+          description: app.description,
+          region: app.region,
+          statusBadge: app.statusBadge,
+          createdAt: app.createdAt,
+        }));
+    }),
+
   },
 
   // ============ MUTATIONS ============
