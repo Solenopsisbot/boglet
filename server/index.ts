@@ -22,7 +22,7 @@ import {
 import { TEMPLATES, type TemplateKind } from "../shared/templates";
 import { type Manifest, type WhereVal, type OrderBy } from "../shared/dsl";
 import { isValidSlug, obfuscate, pickRegion } from "../shared/format";
-import { parseManifestJson } from "./utils";
+import { lakebedInsertId, parseManifestJson } from "./utils";
 
 // ---------- Helpers ----------
 
@@ -334,11 +334,11 @@ export default capsule({
     ensureWorkspace: mutation((ctx) => {
       const existing = ctx.db.workspaces.where("ownerId", ctx.auth.userId).all();
       if (existing[0]) return existing[0].id;
-      const id = ctx.db.workspaces.insert({
+      const id = lakebedInsertId(ctx.db.workspaces.insert({
         ownerId: ctx.auth.userId,
         name: (ctx.auth.displayName || "workspace").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "workspace",
         plan: "free",
-      });
+      }), "workspaces.insert");
       return id;
     }),
 
@@ -351,7 +351,7 @@ export default capsule({
       // Make sure the user has a workspace.
       let workspaces = ctx.db.workspaces.where("ownerId", ctx.auth.userId).all();
       if (!workspaces[0]) {
-        const wsId = ctx.db.workspaces.insert({
+        ctx.db.workspaces.insert({
           ownerId: ctx.auth.userId,
           name: (ctx.auth.displayName || "workspace").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40) || "workspace",
           plan: "free",
@@ -361,7 +361,7 @@ export default capsule({
       const ws = workspaces[0];
 
       const region = pickRegion(slug);
-      const appId = ctx.db.apps.insert({
+      const appId = lakebedInsertId(ctx.db.apps.insert({
         workspaceId: ws.id,
         ownerId: ctx.auth.userId,
         slug,
@@ -371,31 +371,37 @@ export default capsule({
         activeDeployId: "",
         region,
         statusBadge: "deploying",
-      });
+      }), "apps.insert");
 
       // Initial deploy from template.
       const tmplKey = (TEMPLATES[template as TemplateKind] ? template : "empty") as TemplateKind;
       const manifest = TEMPLATES[tmplKey];
-      const deployId = ctx.db.deploys.insert({
-        appId,
-        version: "1",
-        manifest: JSON.stringify(manifest),
-        deployedBy: ctx.auth.userId,
-        status: "live",
-      });
-
-      // Seed deploy logs.
-      const logLines = makeDeployLogs(manifest, region);
-      for (let i = 0; i < logLines.length; i++) {
-        ctx.db.deploy_logs.insert({
-          deployId,
+      try {
+        const deployId = lakebedInsertId(ctx.db.deploys.insert({
           appId,
-          sequence: String(i + 1).padStart(3, "0"),
-          line: logLines[i],
-        });
-      }
+          version: "1",
+          manifest: JSON.stringify(manifest),
+          deployedBy: ctx.auth.userId,
+          status: "live",
+        }), "deploys.insert");
 
-      ctx.db.apps.update(appId, { activeDeployId: deployId, statusBadge: "live" });
+        // Seed deploy logs.
+        const logLines = makeDeployLogs(manifest, region);
+        for (let i = 0; i < logLines.length; i++) {
+          ctx.db.deploy_logs.insert({
+            deployId,
+            appId,
+            sequence: String(i + 1).padStart(3, "0"),
+            line: logLines[i],
+          });
+        }
+
+        ctx.db.apps.update(appId, { activeDeployId: deployId, statusBadge: "live" });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "initial deploy failed";
+        ctx.db.apps.update(appId, { statusBadge: "error" });
+        return { error: msg, appId, slug };
+      }
       return { ok: true, appId, slug };
     }),
 
@@ -409,29 +415,34 @@ export default capsule({
       const prior = ctx.db.deploys.where("appId", appId).all();
       const nextVer = String(prior.length + 1);
 
+      const previousStatus = app.statusBadge || "live";
       ctx.db.apps.update(appId, { statusBadge: "deploying" });
 
-      // Lakebed's validation throws an error but the insert still succeeds
-      // We proceed with the deploy despite the validation error
-      const deployId = ctx.db.deploys.insert({
-        appId: String(appId),
-        version: nextVer,
-        manifest: manifestJson,
-        deployedBy: String(ctx.auth.userId),
-        status: "live",
-      });
+      try {
+        const deployId = lakebedInsertId(ctx.db.deploys.insert({
+          appId,
+          version: nextVer,
+          manifest: manifestJson,
+          deployedBy: ctx.auth.userId,
+          status: "live",
+        }), "deploys.insert");
 
-      const logLines = makeDeployLogs(parsed, app.region);
-      for (let i = 0; i < logLines.length; i++) {
-        ctx.db.deploy_logs.insert({
-          deployId,
-          appId: String(appId),
-          sequence: String(i + 1).padStart(3, "0"),
-          line: logLines[i],
-        });
+        const logLines = makeDeployLogs(parsed, app.region);
+        for (let i = 0; i < logLines.length; i++) {
+          ctx.db.deploy_logs.insert({
+            deployId,
+            appId,
+            sequence: String(i + 1).padStart(3, "0"),
+            line: logLines[i],
+          });
+        }
+        ctx.db.apps.update(appId, { activeDeployId: deployId, statusBadge: "live" });
+        return { ok: true, deployId, version: nextVer };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "deploy failed";
+        ctx.db.apps.update(appId, { statusBadge: app.activeDeployId ? previousStatus : "error" });
+        return { error: msg };
       }
-      ctx.db.apps.update(appId, { activeDeployId: deployId, statusBadge: "live" });
-      return { ok: true, deployId, version: nextVer };
     }),
 
     rollbackDeploy: mutation((ctx, appId: string, deployId: string) => {
@@ -504,7 +515,7 @@ export default capsule({
     createSchedule: mutation((ctx, appId: string, name: string, spec: string, mutationName: string, argsJson: string) => {
       const app = ctx.db.apps.get(appId);
       if (!app || app.ownerId !== ctx.auth.userId) return { error: "not your app" };
-      const id = ctx.db.app_schedules.insert({
+      const id = lakebedInsertId(ctx.db.app_schedules.insert({
         appId,
         name: (name || "schedule").slice(0, 64),
         spec: (spec || "@hour").slice(0, 32),
@@ -512,7 +523,7 @@ export default capsule({
         args: argsJson || "[]",
         enabled: true,
         lastRunAt: "",
-      });
+      }), "app_schedules.insert");
       return { ok: true, id };
     }),
 
@@ -648,11 +659,11 @@ export default capsule({
       let wsRows = ctx.db.workspaces.where("ownerId", "system").all();
       let wsId = wsRows[0]?.id;
       if (!wsId) {
-        wsId = ctx.db.workspaces.insert({ ownerId: "system", name: "system", plan: "enterprise" });
+        wsId = lakebedInsertId(ctx.db.workspaces.insert({ ownerId: "system", name: "system", plan: "enterprise" }), "workspaces.insert");
       }
 
       const manifest = TEMPLATES.boglet;
-      const appId = ctx.db.apps.insert({
+      const appId = lakebedInsertId(ctx.db.apps.insert({
         workspaceId: wsId,
         ownerId: "system",
         slug: "boglet",
@@ -662,14 +673,14 @@ export default capsule({
         activeDeployId: "",
         region: "us-east-1",
         statusBadge: "live",
-      });
-      const deployId = ctx.db.deploys.insert({
+      }), "apps.insert");
+      const deployId = lakebedInsertId(ctx.db.deploys.insert({
         appId,
         version: "1",
         manifest: JSON.stringify(manifest),
         deployedBy: "system",
         status: "live",
-      });
+      }), "deploys.insert");
       const logLines = makeDeployLogs(manifest, "us-east-1");
       for (let i = 0; i < logLines.length; i++) {
         ctx.db.deploy_logs.insert({

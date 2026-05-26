@@ -13,21 +13,21 @@ This is a Lakebed capsule. Build the app inside this directory using the Lakebed
 Run locally:
 
 ```sh
-lakebed dev
+npx lakebed dev
 ```
 
 Deploy:
 
 ```sh
-lakebed deploy
+npx lakebed deploy
 ```
 
 Inspect local state while `lakebed dev` is running:
 
 ```sh
-lakebed db list --port 3000
-lakebed db dump --port 3000
-lakebed logs --port 3000
+npx lakebed db list --port 3000
+npx lakebed db dump --port 3000
+npx lakebed logs --port 3000
 ```
 
 ## Rules

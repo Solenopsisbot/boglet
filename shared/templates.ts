@@ -236,7 +236,11 @@ const pollHtml = `<!DOCTYPE html>
     const opts = document.getElementById('opts');
     async function load() {
       const poll = await boglet.query('poll');
-      const options = await boglet.query('options');
+      let options = await boglet.query('options');
+      if (!options || options.length === 0) {
+        await boglet.mutation('initPoll');
+        options = await boglet.query('options');
+      }
       const myVote = await boglet.query('myVote');
       const voted = myVote && myVote[0];
       const total = (poll && poll[0] && poll[0].totalVotes) || 0;
@@ -446,13 +450,16 @@ const habitsHtml = `<!DOCTYPE html>
     const name = document.getElementById('name');
     async function load() {
       const habits = await boglet.query('habits') || [];
+      const logs = await boglet.query('myHabitLogs') || [];
+      const today = new Date().toISOString().slice(0, 10);
       list.innerHTML = '';
       empty.style.display = habits.length === 0 ? 'block' : 'none';
       for (const h of habits) {
+        const doneToday = logs.some((l) => l.habitId === h.id && l.date === today);
         const div = document.createElement('div');
         div.className = 'habit';
         const check = document.createElement('div');
-        check.className = 'check' + (h.doneToday ? ' done' : '');
+        check.className = 'check' + (doneToday ? ' done' : '');
         check.onclick = async () => { await boglet.mutation('toggle', [h.id]); load(); };
         const n = document.createElement('span');
         n.className = 'name';
@@ -616,6 +623,22 @@ export const TEMPLATES: Record<TemplateKind, Manifest> = {
       },
     },
     mutations: {
+      initPoll: {
+        args: [],
+        body: [
+          { stmt: "query", name: "existing", from: "options", limit: 1 },
+          {
+            stmt: "if",
+            cond: { op: ">", a: { call: "len", args: [{ var: "existing" }] }, b: { literal: 0 } },
+            then: [{ stmt: "return", value: { literal: null } }],
+          },
+          { stmt: "insert", table: "poll", data: { obj: { totalVotes: { literal: 0 } } } },
+          { stmt: "insert", table: "options", data: { obj: { label: { literal: "TypeScript" }, votes: { literal: 0 } } } },
+          { stmt: "insert", table: "options", data: { obj: { label: { literal: "Python" }, votes: { literal: 0 } } } },
+          { stmt: "insert", table: "options", data: { obj: { label: { literal: "Rust" }, votes: { literal: 0 } } } },
+          { stmt: "insert", table: "options", data: { obj: { label: { literal: "Go" }, votes: { literal: 0 } } } },
+        ],
+      },
       vote: {
         args: ["optionId"],
         body: [
@@ -725,6 +748,7 @@ export const TEMPLATES: Record<TemplateKind, Manifest> = {
     },
     queries: {
       habits: { from: "habits", orderBy: [["createdAt", "desc"]], limit: 20 },
+      myHabitLogs: { from: "habitLogs", where: [["userId", "==", { var: "ctx.userId" }]], orderBy: [["createdAt", "desc"]], limit: 200 },
     },
     mutations: {
       addHabit: {
@@ -760,7 +784,22 @@ export const TEMPLATES: Record<TemplateKind, Manifest> = {
           {
             stmt: "if",
             cond: { op: ">", a: { call: "len", args: [{ var: "log" }] }, b: { literal: 0 } },
-            then: [{ stmt: "delete", table: "habitLogs", id: { var: "log.0.id" } }],
+            then: [
+              { stmt: "delete", table: "habitLogs", id: { var: "log.0.id" } },
+              { stmt: "query", name: "h", from: "habits", where: [["id", "==", { var: "args.habitId" }]], limit: 1 },
+              {
+                stmt: "if",
+                cond: { op: ">", a: { call: "len", args: [{ var: "h" }] }, b: { literal: 0 } },
+                then: [
+                  {
+                    stmt: "update",
+                    table: "habits",
+                    id: { var: "h.0.id" },
+                    patch: { obj: { streak: { call: "max", args: [{ literal: 0 }, { op: "-", a: { var: "h.0.streak" }, b: { literal: 1 } }] }, lastDone: { literal: "" } } },
+                  },
+                ],
+              },
+            ],
             else: [
               {
                 stmt: "insert",

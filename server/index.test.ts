@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseManifestJson } from "./utils";
+import { lakebedInsertId, parseManifestJson } from "./utils";
 
 describe("server utilities", () => {
   describe("parseManifestJson", () => {
@@ -72,6 +72,26 @@ describe("server utilities", () => {
       };
       const result = parseManifestJson(JSON.stringify(manifest));
       expect(result).toEqual(manifest);
+    });
+  });
+
+  describe("lakebedInsertId", () => {
+    it("accepts string ids from insert", () => {
+      expect(lakebedInsertId("app_123", "apps.insert")).toBe("app_123");
+    });
+
+    it("accepts row objects from insert", () => {
+      expect(lakebedInsertId({ id: "app_123", slug: "demo" }, "apps.insert")).toBe("app_123");
+    });
+
+    it("rejects row objects without string ids", () => {
+      expect(() => lakebedInsertId({ id: { value: "app_123" } }, "apps.insert"))
+        .toThrow("Expected apps.insert to include a string id");
+    });
+
+    it("rejects missing insert results", () => {
+      expect(() => lakebedInsertId(undefined, "deploys.insert"))
+        .toThrow("Expected deploys.insert to include a string id");
     });
   });
 });

@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { TEMPLATES, TEMPLATE_LABELS, type TemplateKind } from "../shared/templates";
 import { formatTimeAgo, isValidSlug, slugify } from "../shared/format";
 import type { Manifest } from "../shared/dsl";
+import { bogScriptToManifest, manifestToBogScript } from "../shared/bogscript";
 
 // ---------- Fetcher hook ----------
 //
@@ -954,31 +955,200 @@ function SettingsTab({ app, onDeleted }: { app: AppRow; onDeleted: () => void })
 
 // ---------- Manifest editor ----------
 
+type IdeFileKind = "script" | "manifest" | "section" | "page";
+type IdeFile = { id: string; label: string; kind: IdeFileKind; section?: "schema" | "queries" | "mutations"; path?: string };
+type ManifestDiagnostic = { level: "error" | "warn" | "info"; message: string };
+
+const ROOT_IDE_FILE: IdeFile = { id: "script", label: "app.bog", kind: "script" };
+
+function parseManifestDraft(text: string): { manifest: Manifest | null; diagnostics: ManifestDiagnostic[] } {
+  try {
+    const parsed = JSON.parse(text) as Partial<Manifest>;
+    const diagnostics: ManifestDiagnostic[] = [];
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { manifest: null, diagnostics: [{ level: "error", message: "Manifest must be a JSON object." }] };
+    if (typeof parsed.name !== "string" || !parsed.name.trim()) diagnostics.push({ level: "error", message: "manifest.name is required." });
+    if (!parsed.schema || typeof parsed.schema !== "object" || !parsed.schema.tables) diagnostics.push({ level: "error", message: "schema.tables is required." });
+    if (!parsed.queries || typeof parsed.queries !== "object") diagnostics.push({ level: "error", message: "queries must be an object." });
+    if (!parsed.mutations || typeof parsed.mutations !== "object") diagnostics.push({ level: "error", message: "mutations must be an object." });
+    if (!parsed.pages || typeof parsed.pages !== "object") diagnostics.push({ level: "error", message: "pages must be an object." });
+    const tables = parsed.schema?.tables && typeof parsed.schema.tables === "object" ? parsed.schema.tables : {};
+    for (const [queryName, q] of Object.entries(parsed.queries || {})) {
+      const from = (q as { from?: unknown }).from;
+      if (typeof from === "string" && !Object.prototype.hasOwnProperty.call(tables, from)) diagnostics.push({ level: "warn", message: "Query " + queryName + " reads unknown table " + from + "." });
+    }
+    for (const [mutationName, m] of Object.entries(parsed.mutations || {})) {
+      const body = (m as { body?: unknown }).body;
+      if (!Array.isArray(body)) diagnostics.push({ level: "error", message: "Mutation " + mutationName + " needs a body array." });
+    }
+    if (Object.keys(parsed.pages || {}).length === 0) diagnostics.push({ level: "warn", message: "Add at least one page, usually /." });
+    if (diagnostics.length === 0) diagnostics.push({ level: "info", message: "Manifest looks deployable." });
+    return { manifest: parsed as Manifest, diagnostics };
+  } catch (e) {
+    return { manifest: null, diagnostics: [{ level: "error", message: "JSON parse error: " + (e instanceof Error ? e.message : "invalid JSON") }] };
+  }
+}
+
+function ideFilesFor(manifest: Manifest | null): IdeFile[] {
+  const files: IdeFile[] = [
+    ROOT_IDE_FILE,
+    { id: "manifest", label: "manifest.json", kind: "manifest" },
+    { id: "schema", label: "schema.json", kind: "section", section: "schema" },
+    { id: "queries", label: "queries.json", kind: "section", section: "queries" },
+    { id: "mutations", label: "mutations.json", kind: "section", section: "mutations" },
+  ];
+  const pages = manifest?.pages || {};
+  for (const path of Object.keys(pages).sort()) files.push({ id: "page:" + path, label: "pages" + path + ".html", kind: "page", path });
+  return files;
+}
+
+function contentForIdeFile(file: IdeFile, text: string, manifest: Manifest | null): string {
+  if (file.kind === "script") return manifest ? manifestToBogScript(manifest) : "";
+  if (file.kind === "manifest") return text;
+  if (!manifest) return "";
+  if (file.kind === "page") return manifest.pages[file.path || "/"] || "";
+  if (file.section) return JSON.stringify(manifest[file.section], null, 2);
+  return "";
+}
+
+function applyIdeFile(file: IdeFile, fileText: string, manifest: Manifest | null): { text?: string; error?: string } {
+  if (file.kind === "script") {
+    const generated = bogScriptToManifest(fileText, manifest?.pages);
+    if (!generated.ok) return { error: "app.bog parse error: " + generated.error };
+    return { text: JSON.stringify(generated.manifest, null, 2) };
+  }
+  if (file.kind === "manifest") return { text: fileText };
+  if (!manifest) return { error: "Fix manifest.json before editing derived files." };
+  const next: Manifest = JSON.parse(JSON.stringify(manifest));
+  if (file.kind === "page") {
+    next.pages[file.path || "/"] = fileText;
+    return { text: JSON.stringify(next, null, 2) };
+  }
+  if (!file.section) return { error: "Unknown file." };
+  try {
+    const parsed = JSON.parse(fileText);
+    (next as unknown as Record<string, unknown>)[file.section] = parsed;
+    return { text: JSON.stringify(next, null, 2) };
+  } catch (e) {
+    return { error: file.label + " parse error: " + (e instanceof Error ? e.message : "invalid JSON") };
+  }
+}
+
+function makePreviewHtml(manifest: Manifest | null, pagePath: string): string {
+  if (!manifest) return "<html><body style=\"font-family:sans-serif;padding:24px\">Fix manifest errors to preview.</body></html>";
+  const pageHtml = manifest.pages[pagePath] ?? manifest.pages["/"] ?? "<html><body><h1>404</h1></body></html>";
+  const previewBridge = `<script>
+window.boglet = window.boglet || {
+  query: async function(name){ console.log('[preview] query', name); return []; },
+  mutation: async function(name,args){ console.log('[preview] mutation', name, args || []); return null; },
+  auth: function(){ return { userId: 'preview', displayName: 'Preview User', isGuest: false, picture: '' }; },
+  onReady: function(cb){ setTimeout(cb, 0); }
+};
+</script>`;
+  if (pageHtml.includes("</head>")) return pageHtml.replace("</head>", previewBridge + "</head>");
+  return previewBridge + pageHtml;
+}
+
 function ManifestEditor({ slug }: { slug: string }) {
   const getApp = useMutation<[slug: string], { app: AppRow; active: DeployRow | null; deploys: DeployRow[] } | null>("getApp");
   const [data, refresh] = useFetched(() => getApp(slug), [slug]);
   const deployMutation = useMutation<[appId: string, manifestJson: string], { ok?: true; error?: string; version?: string }>("deployManifest");
   const [text, setText] = useState<string>("");
+  const [activeFile, setActiveFile] = useState<IdeFile>(ROOT_IDE_FILE);
+  const [fileText, setFileText] = useState<string>("");
+  const [view, setView] = useState<"editor" | "preview">("editor");
   const [seeded, setSeeded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [, navigate] = usePath();
+  const parsed = useMemo(() => parseManifestDraft(text), [text]);
+  const files = useMemo(() => ideFilesFor(parsed.manifest), [parsed.manifest]);
+  const selectedPage = activeFile.kind === "page" ? activeFile.path || "/" : "/";
+  const previewHtml = useMemo(() => makePreviewHtml(parsed.manifest, selectedPage), [parsed.manifest, selectedPage]);
 
   useEffect(() => {
     if (!seeded && data?.active) {
       try {
         const parsed = JSON.parse(data.active.manifest);
-        setText(JSON.stringify(parsed, null, 2));
-      } catch { setText(data.active.manifest); }
+        const pretty = JSON.stringify(parsed, null, 2);
+        setText(pretty);
+        setFileText(manifestToBogScript(parsed as Manifest));
+      } catch {
+        setText(data.active.manifest);
+        setFileText("");
+      }
       setSeeded(true);
     }
   }, [data?.active?.id, seeded]);
 
+  function openFile(file: IdeFile) {
+    const applied = applyIdeFile(activeFile, fileText, parsed.manifest);
+    if (applied.text) {
+      const nextParsed = parseManifestDraft(applied.text);
+      setText(applied.text);
+      setActiveFile(file);
+      setFileText(contentForIdeFile(file, applied.text, nextParsed.manifest));
+      setError(null);
+    } else {
+      setActiveFile(file);
+      setFileText(contentForIdeFile(file, text, parsed.manifest));
+    }
+  }
+
+  function applyCurrentFile(): boolean {
+    const applied = applyIdeFile(activeFile, fileText, parsed.manifest);
+    if (applied.error) {
+      setError(applied.error);
+      return false;
+    }
+    if (applied.text !== undefined) {
+      setText(applied.text);
+      setFileText(contentForIdeFile(activeFile, applied.text, parseManifestDraft(applied.text).manifest));
+      setError(null);
+    }
+    return true;
+  }
+
+  function generateFromScript() {
+    if (activeFile.kind !== "script") {
+      openFile(ROOT_IDE_FILE);
+      return;
+    }
+    const generated = bogScriptToManifest(fileText, parsed.manifest?.pages);
+    if (!generated.ok) {
+      setError("app.bog parse error: " + generated.error);
+      return;
+    }
+    const nextText = JSON.stringify(generated.manifest, null, 2);
+    setText(nextText);
+    setFileText(manifestToBogScript(generated.manifest));
+    setStatus("Generated manifest");
+    setError(null);
+  }
+
+  function addPage() {
+    if (!parsed.manifest) {
+      setError("Fix manifest.json before adding a page.");
+      return;
+    }
+    let n = 2;
+    let path = "/page";
+    while (parsed.manifest.pages[path]) path = "/page-" + n++;
+    const next = { ...parsed.manifest, pages: { ...parsed.manifest.pages, [path]: "<html><body><h1>" + path.slice(1) + "</h1></body></html>" } };
+    const nextText = JSON.stringify(next, null, 2);
+    const file: IdeFile = { id: "page:" + path, label: "pages" + path + ".html", kind: "page", path };
+    setText(nextText);
+    setActiveFile(file);
+    setFileText(next.pages[path]);
+    setView("editor");
+  }
+
   async function onDeploy() {
     setError(null); setStatus(null);
+    if (!applyCurrentFile()) return;
+    const deployText = applyIdeFile(activeFile, fileText, parsed.manifest).text ?? text;
     try {
-      JSON.parse(text); // surface parse errors
+      JSON.parse(deployText); // surface parse errors
     } catch (e) {
       setError("JSON parse error: " + (e instanceof Error ? e.message : "invalid"));
       return;
@@ -986,7 +1156,7 @@ function ManifestEditor({ slug }: { slug: string }) {
     if (!data?.app) return;
     setBusy(true);
     try {
-      const res = await deployMutation(data.app.id, text);
+      const res = await deployMutation(data.app.id, deployText);
       if (res?.error) setError(res.error);
       else {
         setStatus("Deployed v" + res?.version);
@@ -996,14 +1166,7 @@ function ManifestEditor({ slug }: { slug: string }) {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "deploy failed";
-      // Suppress Lakebed's false-positive validation error
-      if (msg.includes("Expected deploys.appId to be a string")) {
-        setStatus("Deployed");
-        refresh();
-        setTimeout(() => navigate("/dashboard/apps/" + slug), 500);
-      } else {
-        setError(msg);
-      }
+      setError(msg);
     } finally {
       setBusy(false);
     }
@@ -1015,15 +1178,21 @@ function ManifestEditor({ slug }: { slug: string }) {
   return (
     <div className="min-h-screen bg-black text-white">
       <Nav />
-      <main className="mx-auto max-w-6xl px-6 py-10">
+      <main className="mx-auto max-w-7xl px-6 py-8">
         <Link href={"/dashboard/apps/" + slug} className="text-sm text-neutral-500 hover:text-white">← Back to {slug}</Link>
-        <div className="mt-3 mb-6 flex items-baseline justify-between">
+        <div className="mt-3 mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold">Edit manifest</h1>
-            <p className="mt-1 text-sm text-neutral-500">{slug}.boglet.app · currently v{data.active?.version ?? "—"}</p>
+            <h1 className="text-3xl font-bold">Boglet IDE</h1>
+            <p className="mt-1 text-sm text-neutral-500">{slug}.boglet.app · v{data.active?.version ?? "—"} · {text.length.toLocaleString()} bytes</p>
           </div>
           <div className="flex items-center gap-2">
             {status ? <span className="text-sm text-emerald-400">{status}</span> : null}
+            <button type="button" onClick={generateFromScript} className="border border-neutral-700 px-4 py-2 text-sm text-neutral-200 hover:border-white">
+              Generate manifest
+            </button>
+            <button type="button" onClick={() => { applyCurrentFile(); setView(view === "editor" ? "preview" : "editor"); }} className="border border-neutral-700 px-4 py-2 text-sm text-neutral-200 hover:border-white">
+              {view === "editor" ? "Preview" : "Editor"}
+            </button>
             <button type="button" disabled={busy} onClick={() => void onDeploy()} className="border border-white bg-white px-5 py-2 text-sm font-medium text-black hover:bg-neutral-200 disabled:opacity-50">
               {busy ? "Deploying…" : "Deploy →"}
             </button>
@@ -1032,13 +1201,71 @@ function ManifestEditor({ slug }: { slug: string }) {
 
         {error ? <p className="mb-4 border border-red-900 bg-red-950 px-4 py-2 text-sm text-red-300">{error}</p> : null}
 
-        <textarea
-          value={text}
-          onInput={(e) => setText((e.target as HTMLTextAreaElement).value)}
-          spellCheck={false}
-          className="min-h-[60vh] w-full border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs leading-relaxed text-neutral-200 outline-none focus:border-white"
-        />
-        <p className="mt-2 text-xs text-neutral-600">{text.length.toLocaleString()} bytes</p>
+        <div className="grid min-h-[72vh] grid-cols-1 border border-neutral-900 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
+          <aside className="border-b border-neutral-900 bg-neutral-950 lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between border-b border-neutral-900 px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Files</span>
+              <button type="button" onClick={addPage} className="border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:border-white">+ Page</button>
+            </div>
+            <div className="p-2">
+              {files.map((file) => (
+                <button
+                  key={file.id}
+                  type="button"
+                  onClick={() => openFile(file)}
+                  className={"mb-1 block w-full truncate px-3 py-2 text-left font-mono text-xs " + (file.id === activeFile.id ? "bg-white text-black" : "text-neutral-400 hover:bg-neutral-900 hover:text-white")}
+                >
+                  {file.label}
+                </button>
+              ))}
+            </div>
+          </aside>
+
+          <section className="min-w-0 bg-black">
+            <div className="flex items-center justify-between border-b border-neutral-900 px-3 py-2">
+              <span className="font-mono text-xs text-neutral-400">{activeFile.label}</span>
+              <button type="button" onClick={applyCurrentFile} className="border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-white">Apply</button>
+            </div>
+            {view === "editor" ? (
+              <textarea
+                value={fileText}
+                onInput={(e) => setFileText((e.target as HTMLTextAreaElement).value)}
+                spellCheck={false}
+                className="h-[68vh] w-full resize-none bg-neutral-950 p-4 font-mono text-xs leading-relaxed text-neutral-200 outline-none"
+              />
+            ) : (
+              <iframe
+                srcDoc={previewHtml}
+                sandbox="allow-scripts allow-forms"
+                className="h-[68vh] w-full border-0 bg-white"
+                title="Boglet preview"
+              />
+            )}
+          </section>
+
+          <aside className="border-t border-neutral-900 bg-neutral-950 lg:border-l lg:border-t-0">
+            <div className="border-b border-neutral-900 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-neutral-500">Diagnostics</p>
+            </div>
+            <div className="space-y-2 p-4">
+              {parsed.diagnostics.map((d, i) => (
+                <div key={i} className={"border px-3 py-2 text-xs " + (d.level === "error" ? "border-red-900 bg-red-950 text-red-200" : d.level === "warn" ? "border-amber-900 bg-amber-950 text-amber-200" : "border-emerald-900 bg-emerald-950 text-emerald-200")}>
+                  {d.message}
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-neutral-900 px-4 py-3">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-500">Outline</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="border border-neutral-900 p-3"><p className="text-neutral-500">Tables</p><p className="mt-1 text-lg text-white">{Object.keys(parsed.manifest?.schema.tables || {}).length}</p></div>
+                <div className="border border-neutral-900 p-3"><p className="text-neutral-500">Queries</p><p className="mt-1 text-lg text-white">{Object.keys(parsed.manifest?.queries || {}).length}</p></div>
+                <div className="border border-neutral-900 p-3"><p className="text-neutral-500">Mutations</p><p className="mt-1 text-lg text-white">{Object.keys(parsed.manifest?.mutations || {}).length}</p></div>
+                <div className="border border-neutral-900 p-3"><p className="text-neutral-500">Pages</p><p className="mt-1 text-lg text-white">{Object.keys(parsed.manifest?.pages || {}).length}</p></div>
+              </div>
+              <a href={"#/app/" + slug} target="_blank" className="mt-4 block border border-neutral-700 px-3 py-2 text-center text-sm text-neutral-200 hover:border-white">Open live app</a>
+            </div>
+          </aside>
+        </div>
       </main>
     </div>
   );
