@@ -46,7 +46,7 @@ describe("dsl validation", () => {
   it("accepts valid manifest", () => {
     const result = validateManifest(validManifest);
     expect(result.ok).toBe(true);
-    expect(result.manifest).toEqual(validManifest);
+    if (result.ok) expect(result.manifest).toEqual(validManifest);
   });
 
   it("accepts manifest with any field type (validation is minimal)", () => {

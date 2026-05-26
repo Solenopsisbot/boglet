@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment",
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "strictBindCallApply": false,
+    "strictPropertyInitialization": false,
+    "noImplicitThis": false,
+    "alwaysStrict": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "preact": ["./types/preact"],
+      "preact/hooks": ["./types/preact"],
+      "preact/jsx-runtime": ["./types/preact"],
+      "lakebed/client": ["./types/lakebed-client"],
+      "lakebed/server": ["./types/lakebed-server"],
+      "vitest": ["./types/vitest"]
+    }
+  },
+  "include": ["client", "server", "shared", "types"],
+  "exclude": ["node_modules"]
+}

@@ -3,6 +3,7 @@
 // manifest editor) lives in this one file because Lakebed allows one client
 // entry per capsule.
 
+import { h, Fragment } from "preact";
 import { SignInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 
@@ -68,7 +69,7 @@ function usePath(): [string, (next: string) => void] {
   return [path, navigate];
 }
 
-function Link({ href, className, children, onClick }: { href: string; className?: string; children: unknown; onClick?: () => void }) {
+function Link({ href, className, children, onClick, key }: { href: string; className?: string; children: unknown; onClick?: () => void; key?: string }) {
   const hashHref = href.startsWith("http") || href.startsWith("mailto:") ? href : "#" + href;
   return (
     <a
@@ -83,7 +84,7 @@ function Link({ href, className, children, onClick }: { href: string; className?
         if (onClick) onClick();
       }}
     >
-      {children as preact.ComponentChildren}
+      {children}
     </a>
   );
 }
@@ -911,7 +912,7 @@ function SettingsTab({ app, onDeleted }: { app: AppRow; onDeleted: () => void })
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function onSave(e: SubmitEvent) {
+  async function onSave(e: Event) {
     e.preventDefault();
     setBusy(true);
     try { await update(app.id, name, desc, isPublic); } finally { setBusy(false); }
@@ -1013,7 +1014,7 @@ function contentForIdeFile(file: IdeFile, text: string, manifest: Manifest | nul
 function applyIdeFile(file: IdeFile, fileText: string, manifest: Manifest | null): { text?: string; error?: string } {
   if (file.kind === "script") {
     const generated = bogScriptToManifest(fileText, manifest?.pages);
-    if (!generated.ok) return { error: "app.bog parse error: " + generated.error };
+    if (!generated.ok) return { error: "app.bog parse error: " + (generated as { ok: false; error: string }).error };
     return { text: JSON.stringify(generated.manifest, null, 2) };
   }
   if (file.kind === "manifest") return { text: fileText };
@@ -1116,7 +1117,7 @@ function ManifestEditor({ slug }: { slug: string }) {
     }
     const generated = bogScriptToManifest(fileText, parsed.manifest?.pages);
     if (!generated.ok) {
-      setError("app.bog parse error: " + generated.error);
+      setError("app.bog parse error: " + (generated as { ok: false; error: string }).error);
       return;
     }
     const nextText = JSON.stringify(generated.manifest, null, 2);
