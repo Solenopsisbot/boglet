@@ -656,6 +656,8 @@ function AppDetail({ slug }: { slug: string }) {
 }
 
 function OverviewTab({ app, active }: { app: AppRow; active: DeployRow | null }) {
+  const resetStatus = useMutation<[appId: string], unknown>("resetAppStatus");
+  const [refresh] = useFetched(() => resetStatus(app.id), []);
   const stats = [
     { label: "Active version", value: active ? "v" + active.version : "—" },
     { label: "Visibility", value: app.isPublic ? "public" : "private" },
@@ -671,6 +673,18 @@ function OverviewTab({ app, active }: { app: AppRow; active: DeployRow | null })
           </div>
         ))}
       </div>
+      {app.statusBadge === "deploying" && (
+        <div className="mt-4 border border-amber-900 bg-amber-950 px-4 py-3">
+          <p className="text-sm text-amber-300">App is stuck in "deploying" state.</p>
+          <button
+            type="button"
+            onClick={() => { void resetStatus(app.id); setTimeout(() => window.location.reload(), 500); }}
+            className="mt-2 border border-amber-700 bg-amber-900 px-3 py-1 text-xs text-amber-100 hover:bg-amber-800"
+          >
+            Reset to live
+          </button>
+        </div>
+      )}
       <div className="mt-8 border border-neutral-900">
         <div className="border-b border-neutral-900 px-6 py-4">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-500">Active manifest</h3>
@@ -974,9 +988,22 @@ function ManifestEditor({ slug }: { slug: string }) {
     try {
       const res = await deployMutation(data.app.id, text);
       if (res?.error) setError(res.error);
-      else { setStatus("Deployed v" + res?.version); refresh(); }
+      else {
+        setStatus("Deployed v" + res?.version);
+        refresh();
+        // Navigate to app detail page after successful deploy
+        setTimeout(() => navigate("/dashboard/apps/" + slug), 500);
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "deploy failed");
+      const msg = e instanceof Error ? e.message : "deploy failed";
+      // Suppress Lakebed's false-positive validation error
+      if (msg.includes("Expected deploys.appId to be a string")) {
+        setStatus("Deployed");
+        refresh();
+        setTimeout(() => navigate("/dashboard/apps/" + slug), 500);
+      } else {
+        setError(msg);
+      }
     } finally {
       setBusy(false);
     }

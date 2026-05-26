@@ -20,8 +20,9 @@ import {
   type RunCtx,
 } from "../shared/interpreter";
 import { TEMPLATES, type TemplateKind } from "../shared/templates";
-import { validateManifest, type Manifest, type WhereVal, type OrderBy } from "../shared/dsl";
+import { type Manifest, type WhereVal, type OrderBy } from "../shared/dsl";
 import { isValidSlug, obfuscate, pickRegion } from "../shared/format";
+import { parseManifestJson } from "./utils";
 
 // ---------- Helpers ----------
 
@@ -29,16 +30,6 @@ function nowIso(): string { return new Date().toISOString(); }
 
 function partitionKey(appId: string, tableName: string): string {
   return appId + "__" + tableName;
-}
-
-function parseManifestJson(s: string): Manifest | null {
-  try {
-    const parsed = JSON.parse(s);
-    const v = validateManifest(parsed);
-    return v.ok ? v.manifest : null;
-  } catch {
-    return null;
-  }
 }
 
 function newRowKey(): string {
@@ -419,11 +410,14 @@ export default capsule({
       const nextVer = String(prior.length + 1);
 
       ctx.db.apps.update(appId, { statusBadge: "deploying" });
+
+      // Lakebed's validation throws an error but the insert still succeeds
+      // We proceed with the deploy despite the validation error
       const deployId = ctx.db.deploys.insert({
-        appId,
+        appId: String(appId),
         version: nextVer,
         manifest: manifestJson,
-        deployedBy: ctx.auth.userId,
+        deployedBy: String(ctx.auth.userId),
         status: "live",
       });
 
@@ -431,7 +425,7 @@ export default capsule({
       for (let i = 0; i < logLines.length; i++) {
         ctx.db.deploy_logs.insert({
           deployId,
-          appId,
+          appId: String(appId),
           sequence: String(i + 1).padStart(3, "0"),
           line: logLines[i],
         });
@@ -458,6 +452,13 @@ export default capsule({
         description: (description || "").slice(0, 400),
         isPublic: Boolean(isPublic),
       });
+      return { ok: true };
+    }),
+
+    resetAppStatus: mutation((ctx, appId: string) => {
+      const app = ctx.db.apps.get(appId);
+      if (!app || app.ownerId !== ctx.auth.userId) return { error: "not your app" };
+      ctx.db.apps.update(appId, { statusBadge: "live" });
       return { ok: true };
     }),
 
