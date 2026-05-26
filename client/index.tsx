@@ -1,6 +1,7 @@
-// Boglet — single Preact client entry. Pathname-based routing, no react-router.
-// The whole "cloud platform" (landing, docs, pricing, status, dashboard, app runner)
-// lives inside this one file because Lakebed only allows one client entry.
+// Boglet — single Preact client entry. Hash-based routing (because Lakebed
+// only serves /). The whole UI (landing, docs, status, dashboard, runner,
+// manifest editor) lives in this one file because Lakebed allows one client
+// entry per capsule.
 
 import { SignInWithGoogle, signOut, useAuth, useMutation, useQuery } from "lakebed/client";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
@@ -97,7 +98,6 @@ export function App() {
 
   if (path === "/") return <Landing />;
   if (path === "/docs") return <Docs />;
-  if (path === "/pricing") return <Pricing />;
   if (path === "/status") return <StatusPage />;
   if (path === "/built-on-boglet") return <BuiltOnBoglet />;
   if (path === "/dashboard") return <Dashboard />;
@@ -128,8 +128,8 @@ function Nav() {
         </Link>
         <nav className="flex items-center gap-6 text-sm text-neutral-400">
           <Link href="/docs" className="hover:text-white">Docs</Link>
-          <Link href="/pricing" className="hover:text-white">Pricing</Link>
           <Link href="/status" className="hover:text-white">Status</Link>
+          <a href="https://github.com/Solenopsisbot/boglet" target="_blank" rel="noopener noreferrer" className="hover:text-white">GitHub ↗</a>
           <a href="https://lakebed.dev/" target="_blank" rel="noopener noreferrer" className="hover:text-white">Built on Lakebed ↗</a>
           {auth.isLoading ? null : auth.isGuest ? (
             <SignInWithGoogle className="border border-neutral-700 px-3 py-1.5 text-xs font-medium text-white hover:border-white" />
@@ -148,42 +148,33 @@ function Nav() {
 function Footer() {
   return (
     <footer className="mt-32 border-t border-neutral-900">
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-12 px-6 py-12 text-sm text-neutral-500 md:grid-cols-4">
+      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-12 px-6 py-12 text-sm text-neutral-500 md:grid-cols-3">
         <div>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Product</p>
           <ul className="space-y-2">
             <li><Link href="/docs" className="hover:text-white">Documentation</Link></li>
-            <li><Link href="/pricing" className="hover:text-white">Pricing</Link></li>
             <li><Link href="/dashboard" className="hover:text-white">Dashboard</Link></li>
-          </ul>
-        </div>
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Platform</p>
-          <ul className="space-y-2">
             <li><Link href="/status" className="hover:text-white">Status</Link></li>
-            <li><span>Edge Regions: 5</span></li>
-            <li><span>Uptime SLA: 99.999%</span></li>
           </ul>
         </div>
         <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Solutions</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Source</p>
           <ul className="space-y-2">
-            <li><span>Boglet for Banking</span></li>
-            <li><span>Boglet for Healthcare</span></li>
-            <li><span>Boglet for Defense</span></li>
+            <li><a href="https://github.com/Solenopsisbot/boglet" target="_blank" rel="noopener noreferrer" className="hover:text-white">github.com/Solenopsisbot/boglet ↗</a></li>
+            <li><a href="https://lakebed.dev/" target="_blank" rel="noopener noreferrer" className="hover:text-white">lakebed.dev ↗</a></li>
           </ul>
         </div>
         <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Compliance</p>
-          <ul className="space-y-2">
-            <li><span>SOC 2 Type II</span></li>
-            <li><span>ISO 27001</span></li>
-            <li><span>HIPAA · GDPR · CCPA</span></li>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-white">Honesty</p>
+          <ul className="space-y-2 text-neutral-500">
+            <li>One Lakebed capsule.</li>
+            <li>Multi-tenant on partition keys.</li>
+            <li>No real edge regions.</li>
           </ul>
         </div>
       </div>
       <div className="mx-auto flex max-w-6xl items-center justify-between border-t border-neutral-900 px-6 py-6 text-xs text-neutral-600">
-        <span>© Boglet, Inc. All rights reserved.</span>
+        <span>Boglet · alpha · MIT</span>
         <Link href="/built-on-boglet" className="hover:text-white">Built on Boglet ↗</Link>
       </div>
     </footer>
@@ -201,52 +192,42 @@ function Landing() {
         <section className="border-b border-neutral-900">
           <div className="mx-auto max-w-6xl px-6 py-24 md:py-32">
             <p className="mb-6 inline-block border border-neutral-800 px-3 py-1 font-mono text-[11px] uppercase tracking-wider text-neutral-400">
-              Boglet [alpha] · now generally available
+              Boglet [alpha]
             </p>
             <h1 className="max-w-3xl text-5xl font-bold leading-[1.05] tracking-tight md:text-7xl">
-              Let the agents build.<br />Get out of their way.
+              A tiny PaaS<br />inside one Lakebed capsule.
             </h1>
             <p className="mt-8 max-w-2xl text-lg leading-relaxed text-neutral-400">
-              Boglet is the agent-native cloud platform for the post-IDE era. Deploy capsules with a single command. Scale to zero between requests. Pay only for what your agents ship.
+              Sign in with Google. Author a capsule as a JSON manifest — schema, queries, mutations, and HTML pages. Visitors run it through a sandboxed iframe with a postMessage bridge to a budget-bounded interpreter. That's it. That's the platform.
             </p>
             <div className="mt-10 flex flex-wrap items-center gap-4">
               <Link href="/dashboard" className="border border-white bg-white px-5 py-3 text-sm font-medium text-black hover:bg-neutral-200">
-                Deploy your first capsule →
+                Deploy a capsule →
               </Link>
               <Link href="/docs" className="border border-neutral-700 px-5 py-3 text-sm font-medium text-white hover:border-white">
                 Read the docs
               </Link>
-              <code className="hidden font-mono text-sm text-neutral-500 md:inline">npx boglet new my-app</code>
+              <a href="https://github.com/Solenopsisbot/boglet" target="_blank" rel="noopener noreferrer" className="font-mono text-sm text-neutral-500 hover:text-white">
+                github.com/Solenopsisbot/boglet ↗
+              </a>
             </div>
           </div>
         </section>
 
-        {/* Trusted by */}
-        <section className="border-b border-neutral-900">
-          <div className="mx-auto max-w-6xl px-6 py-10">
-            <p className="text-center text-xs uppercase tracking-wider text-neutral-500">Trusted by capsule-shipping teams at</p>
-            <div className="mt-6 grid grid-cols-2 items-center justify-items-center gap-8 text-neutral-400 md:grid-cols-6">
-              {["MERIDIAN", "Vertex Labs", "NORTHWIND", "Foxglove AI", "PRIMUS", "Halcyon"].map((b) => (
-                <span key={b} className="font-mono text-sm tracking-wider">{b}</span>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Features */}
+        {/* Features — only what actually ships */}
         <section className="border-b border-neutral-900">
           <div className="mx-auto max-w-6xl px-6 py-24">
             <h2 className="max-w-2xl text-3xl font-bold tracking-tight md:text-4xl">
-              The platform your agents already understand.
+              What's actually here.
             </h2>
             <div className="mt-16 grid gap-12 md:grid-cols-3">
               {[
-                ["Auto-scaling capsules", "Zero-config horizontal scaling. Boglet provisions runtime capacity in 41ms cold starts across 5 global regions. Your capsule wakes when the request arrives and sleeps when it doesn't."],
-                ["Server-authoritative data", "Every query and mutation runs in our hardened source-IR runtime. Authorization is enforced at the partition level. No accidental cross-tenant leaks. No SQL injection. No surprises."],
-                ["Built-in auth, free", "Google sign-in out of the box. Per-app identity. Per-user data scoping via ctx.userId. Stop building login pages and start shipping capsules."],
-                ["Edge-routed traffic", "Requests terminate at the nearest of our 5 regional edges (US-East, US-West, EU-West, AP-Southeast, AP-Northeast) and route to the warmest replica. Median latency: 38ms."],
-                ["Live observability", "Structured logs, per-app metrics, deploy history, point-in-time rollback. Every byte of state addressable, queryable, and auditable from your dashboard."],
-                ["Secrets vault", "Per-app environment isolation with at-rest obfuscation. Never expose a secret to client code. Never embed a key in an artifact."],
+                ["Manifests are JSON", "A capsule is a JSON document describing schema, named queries, named mutations, and HTML pages. No bundler. No npm install. No code is ever evaluated by eval or new Function — everything goes through a typed AST."],
+                ["Sandboxed iframe runner", "User pages render in an <iframe sandbox=\"allow-scripts\"> with a small window.boglet helper. Page scripts call boglet.query() and boglet.mutation(); replies come back via postMessage."],
+                ["Partition-scoped data", "Every row in your capsule lives under appTable = \"{appId}__{tableName}\". The interpreter cannot escape the partition. Cross-tenant reads are impossible by construction."],
+                ["Budgeted interpreter", "10,000 steps, depth 32, 100 db ops per call, 100KB per row. Bad manifests run out of budget, they don't crash the host."],
+                ["Logs · metrics · env vault", "Every query/mutation invocation goes into per-app logs and bumps a per-app metric. Per-app env vars stored with at-rest obfuscation. Live-tailed from the dashboard."],
+                ["Deploy history · rollback · schedules", "Every deploy is a versioned manifest. One click rolls back to any prior version. Cron-style schedules (@minute, @hour, @day, every Nm) fire user mutations on a timer."],
               ].map(([title, body]) => (
                 <div key={title}>
                   <h3 className="mb-3 text-base font-semibold text-white">{title}</h3>
@@ -261,7 +242,7 @@ function Landing() {
         <section className="border-b border-neutral-900 bg-neutral-950">
           <div className="mx-auto max-w-6xl px-6 py-24">
             <h2 className="mb-2 text-3xl font-bold tracking-tight md:text-4xl">A capsule is JSON.</h2>
-            <p className="mb-8 max-w-2xl text-neutral-400">No frameworks. No bundlers. No build step. Just write the manifest and deploy.</p>
+            <p className="mb-8 max-w-2xl text-neutral-400">Here's the entire server side of a working todo app. Plus an HTML page to render it, and you're done.</p>
             <pre className="overflow-x-auto border border-neutral-800 bg-black p-6 font-mono text-xs leading-relaxed text-neutral-300">
 {`{
   "name": "todo",
@@ -284,24 +265,14 @@ function Landing() {
           </div>
         </section>
 
-        {/* Testimonial */}
-        <section className="border-b border-neutral-900">
-          <div className="mx-auto max-w-3xl px-6 py-24 text-center">
-            <blockquote className="text-2xl font-medium leading-relaxed text-white md:text-3xl">
-              "We replaced our entire Kubernetes platform with Boglet on a Friday afternoon. Our agents are 8x more productive. I have stopped reading Hacker News."
-            </blockquote>
-            <p className="mt-6 text-sm text-neutral-500">— Eliana Vance, Chief Capsule Officer, Meridian</p>
-          </div>
-        </section>
-
         {/* CTA */}
         <section>
           <div className="mx-auto max-w-3xl px-6 py-24 text-center">
-            <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Your agents are ready.</h2>
-            <p className="mt-4 text-neutral-400">Deploy your first capsule in under 41 seconds.</p>
+            <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Try it.</h2>
+            <p className="mt-4 text-neutral-400">Sign in with Google, pick a template, deploy.</p>
             <div className="mt-8">
               <Link href="/dashboard" className="inline-block border border-white bg-white px-6 py-3 text-sm font-medium text-black hover:bg-neutral-200">
-                Get started →
+                Open the dashboard →
               </Link>
             </div>
           </div>
@@ -319,68 +290,44 @@ function Docs() {
     <div className="min-h-screen bg-black text-white">
       <Nav />
       <main className="mx-auto max-w-3xl px-6 py-16">
-        <h1 className="mb-2 text-5xl font-bold tracking-tight">Boglet Docs</h1>
-        <p className="mb-12 text-neutral-400">Boglet is an agent-native CLI and runtime for building small full-stack apps called capsules.</p>
+        <h1 className="mb-2 text-5xl font-bold tracking-tight">Docs</h1>
+        <p className="mb-12 text-neutral-400">Boglet hosts JSON-defined apps called <em>capsules</em>. There's no CLI — sign in, pick a template, edit, deploy.</p>
 
-        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">Start Here</h2>
-        <p className="mb-4 text-neutral-300">Create and run a capsule:</p>
-        <pre className="mb-6 border border-neutral-800 bg-neutral-950 p-4 font-mono text-sm text-neutral-300">{`npx boglet new my-app --template todo
-cd my-app
-npx boglet dev`}</pre>
-        <p className="text-neutral-400">A Boglet capsule is a JSON manifest with four sections: <code className="font-mono text-orange-400">schema</code>, <code className="font-mono text-orange-400">queries</code>, <code className="font-mono text-orange-400">mutations</code>, and <code className="font-mono text-orange-400">pages</code>.</p>
-
-        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">Server Contract</h2>
-        <p className="text-neutral-300">Every capsule exports a manifest. The manifest describes a typed database, a set of named queries and mutations, and one or more HTML pages served from server state.</p>
-
-        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">Client Contract</h2>
-        <p className="text-neutral-300">Pages run in an isolated sandbox with a <code className="font-mono text-orange-400">window.boglet</code> bridge that exposes <code className="font-mono text-orange-400">.query()</code>, <code className="font-mono text-orange-400">.mutation()</code>, <code className="font-mono text-orange-400">.auth()</code>, and <code className="font-mono text-orange-400">.onReady()</code>.</p>
-
-        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">Current Limits</h2>
-        <ul className="list-disc pl-6 text-neutral-400">
-          <li>One manifest per capsule.</li>
-          <li>String and boolean fields. Numbers stored as JSON in row data.</li>
-          <li>10,000 interpreter steps per query/mutation.</li>
-          <li>100 db ops per mutation.</li>
-          <li>100KB per row.</li>
-          <li>Anonymous deploys do not have outbound fetch.</li>
+        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">A capsule has four parts</h2>
+        <ul className="list-disc space-y-2 pl-6 text-neutral-300">
+          <li><code className="font-mono text-orange-400">schema.tables</code> — named tables with string / boolean / number fields.</li>
+          <li><code className="font-mono text-orange-400">queries</code> — named read shapes: <code className="font-mono text-orange-400">{`{ from, where, orderBy, limit }`}</code>.</li>
+          <li><code className="font-mono text-orange-400">mutations</code> — named writes: a list of <code className="font-mono text-orange-400">stmt</code> ops (<code className="font-mono text-orange-400">let / if / for / query / insert / update / delete / log / return</code>).</li>
+          <li><code className="font-mono text-orange-400">pages</code> — path → HTML. Rendered in a sandboxed iframe.</li>
         </ul>
 
-        <p className="mt-16 text-sm text-neutral-500">Need more? <a href="mailto:enterprise@boglet.example" className="text-orange-400 hover:underline">Contact our enterprise team</a>.</p>
-      </main>
-      <Footer />
-    </div>
-  );
-}
+        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">In the iframe</h2>
+        <p className="text-neutral-300">Page scripts get a <code className="font-mono text-orange-400">window.boglet</code> helper:</p>
+        <pre className="mt-4 border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs leading-relaxed text-neutral-300">{`await boglet.query('todos')         // returns the rows
+await boglet.mutation('addTodo', ['hello'])
+boglet.auth()                       // current visitor identity
+boglet.onReady(fn)                  // fires once the bridge is up`}</pre>
 
-// ---------- Pricing ----------
+        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">DSL quick reference</h2>
+        <p className="mb-3 text-neutral-400">Every value in queries/mutations is one of these expressions:</p>
+        <pre className="mb-6 border border-neutral-800 bg-neutral-950 p-4 font-mono text-xs leading-relaxed text-neutral-300">{`{ "literal": "hello" }
+{ "var": "ctx.userId" }     // ctx, args, or any let-bound name (dot-path)
+{ "call": "now", "args": [] }
+{ "op": "+", "a": ..., "b": ... }
+{ "obj": { "key": expr, ... } }
+{ "arr": [ expr, ... ] }`}</pre>
+        <p className="mb-3 text-neutral-400">Builtins available via <code className="font-mono text-orange-400">call</code>: <code className="font-mono">now, uuid, len, concat, lower, upper, trim, slice, toString, parseInt, parseFloat, not, isEmpty, coalesce, min, max</code>.</p>
 
-function Pricing() {
-  const tiers = [
-    { name: "Hobby", price: "Free", caption: "for solo agents", features: ["3 capsules", "1GB of state", "Community support", "boglet.app subdomain"] },
-    { name: "Pro", price: "$0.04/req", caption: "for shipping agents", features: ["Unlimited capsules", "100GB of state", "Email support", "Custom subdomains", "Deploy history"] },
-    { name: "Enterprise", price: "Custom", caption: "for agent fleets", features: ["Dedicated regions", "SOC 2 Type II audit pack", "24/7 pager", "SSO", "On-prem option"] },
-  ];
-  return (
-    <div className="min-h-screen bg-black text-white">
-      <Nav />
-      <main className="mx-auto max-w-6xl px-6 py-20">
-        <h1 className="mb-2 text-5xl font-bold tracking-tight">Pricing</h1>
-        <p className="mb-16 text-neutral-400">Pay only for what your capsules actually do. No idle costs.</p>
-        <div className="grid gap-6 md:grid-cols-3">
-          {tiers.map((t) => (
-            <div key={t.name} className="border border-neutral-800 p-8">
-              <p className="text-xs uppercase tracking-wider text-neutral-500">{t.caption}</p>
-              <h2 className="mt-2 text-2xl font-semibold">{t.name}</h2>
-              <p className="mt-4 text-4xl font-bold">{t.price}</p>
-              <ul className="mt-8 space-y-3 text-sm text-neutral-400">
-                {t.features.map((f) => <li key={f}>· {f}</li>)}
-              </ul>
-              <Link href="/dashboard" className="mt-8 inline-block w-full border border-neutral-700 px-4 py-2 text-center text-sm hover:border-white">
-                Start with {t.name} →
-              </Link>
-            </div>
-          ))}
-        </div>
+        <h2 className="mb-4 mt-12 border-t border-neutral-900 pt-8 text-2xl font-semibold">Limits</h2>
+        <ul className="list-disc pl-6 text-neutral-400">
+          <li>10,000 interpreter steps per call</li>
+          <li>32 levels of nesting (if / for)</li>
+          <li>100 db ops per call</li>
+          <li>100KB per row</li>
+          <li>1,000 iterations per <code className="font-mono text-orange-400">for</code> loop</li>
+        </ul>
+
+        <p className="mt-16 text-sm text-neutral-500">Boglet is open source. See <a href="https://github.com/Solenopsisbot/boglet" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline">the repo</a> for the full source.</p>
       </main>
       <Footer />
     </div>
@@ -390,57 +337,32 @@ function Pricing() {
 // ---------- Status page ----------
 
 function StatusPage() {
-  const incidents = useMemo(() => [
-    { date: new Date(Date.now() - 1 * 86400_000).toISOString().slice(0, 10), title: "Minor latency increase in EU-West", status: "Resolved", duration: "12 min" },
-    { date: new Date(Date.now() - 4 * 86400_000).toISOString().slice(0, 10), title: "Brief deploy queue saturation, AP-Southeast", status: "Resolved", duration: "4 min" },
-    { date: new Date(Date.now() - 11 * 86400_000).toISOString().slice(0, 10), title: "Edge route flap, US-East", status: "Resolved", duration: "21 min" },
-  ], []);
-  const regions = [
-    { name: "us-east-1", label: "US East (Virginia)", status: "operational" },
-    { name: "us-west-2", label: "US West (Oregon)", status: "operational" },
-    { name: "eu-west-1", label: "Europe West (Dublin)", status: "operational" },
-    { name: "ap-southeast-2", label: "Asia Pacific (Sydney)", status: "operational" },
-    { name: "ap-northeast-1", label: "Asia Pacific (Tokyo)", status: "operational" },
-  ];
-
   return (
     <div className="min-h-screen bg-black text-white">
       <Nav />
-      <main className="mx-auto max-w-4xl px-6 py-16">
+      <main className="mx-auto max-w-3xl px-6 py-16">
         <div className="flex items-center gap-3">
           <span className="block h-3 w-3 rounded-full bg-emerald-500" />
-          <h1 className="text-3xl font-bold">All systems operational</h1>
+          <h1 className="text-3xl font-bold">Boglet is up.</h1>
         </div>
-        <p className="mt-2 text-neutral-500">Updated {new Date().toUTCString()}</p>
+        <p className="mt-2 text-neutral-500">If this page loaded, the capsule served it. That's the only signal you need.</p>
 
-        <h2 className="mb-4 mt-12 text-sm font-semibold uppercase tracking-wider text-neutral-500">Regions</h2>
-        <div className="border border-neutral-900">
-          {regions.map((r) => (
-            <div key={r.name} className="flex items-center justify-between border-b border-neutral-900 px-6 py-4 last:border-b-0">
-              <div>
-                <p className="font-mono text-sm text-white">{r.name}</p>
-                <p className="text-xs text-neutral-500">{r.label}</p>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-emerald-400">
-                <span className="block h-2 w-2 rounded-full bg-emerald-500" />
-                operational
-              </div>
-            </div>
-          ))}
+        <div className="mt-12 space-y-6 text-sm text-neutral-400">
+          <p>
+            Boglet runs as a single Lakebed capsule. There are no regions, edge nodes, or fleets behind it — just one Node process Lakebed is hosting. When that process is down, this page doesn't load.
+          </p>
+          <p>
+            For the underlying runtime's health, see <a href="https://lakebed.dev/" target="_blank" rel="noopener noreferrer" className="text-orange-400 hover:underline">lakebed.dev</a>.
+          </p>
         </div>
 
-        <h2 className="mb-4 mt-12 text-sm font-semibold uppercase tracking-wider text-neutral-500">Recent incidents</h2>
-        <div className="border border-neutral-900">
-          {incidents.map((i, idx) => (
-            <div key={idx} className="border-b border-neutral-900 px-6 py-4 last:border-b-0">
-              <div className="flex items-baseline justify-between">
-                <p className="font-medium text-white">{i.title}</p>
-                <p className="text-xs text-neutral-500">{i.date}</p>
-              </div>
-              <p className="mt-1 text-xs text-neutral-500">{i.status} · duration {i.duration}</p>
-            </div>
-          ))}
-        </div>
+        <h2 className="mb-4 mt-16 text-sm font-semibold uppercase tracking-wider text-neutral-500">What you can rely on</h2>
+        <ul className="space-y-2 text-sm text-neutral-300">
+          <li>· Every deploy is stored as an immutable version. Rollback is one click.</li>
+          <li>· Local <code className="font-mono text-orange-400">npx lakebed dev</code> state resets on restart. Hosted state persists.</li>
+          <li>· Per-app data is partitioned by appId. Bad manifests can't read other apps' rows.</li>
+          <li>· Interpreter budgets hard-stop a query/mutation that misbehaves.</li>
+        </ul>
       </main>
       <Footer />
     </div>
@@ -532,9 +454,9 @@ function Dashboard() {
                   <h3 className="truncate text-lg font-semibold text-white">{a.name}</h3>
                   <StatusDot status={a.statusBadge} />
                 </div>
-                <p className="mt-1 font-mono text-xs text-neutral-500">{a.slug}.boglet.app</p>
+                <p className="mt-1 font-mono text-xs text-neutral-500">/app/{a.slug}</p>
                 <p className="mt-3 line-clamp-2 text-sm text-neutral-400">{a.description || <span className="text-neutral-700">no description</span>}</p>
-                <p className="mt-4 text-xs text-neutral-600">{a.region} · {formatTimeAgo(a.createdAt)}</p>
+                <p className="mt-4 text-xs text-neutral-600">created {formatTimeAgo(a.createdAt)}</p>
               </Link>
             ))}
           </div>
@@ -615,13 +537,13 @@ function NewAppWizard() {
           <div>
             <label className="mb-2 block text-xs uppercase tracking-wider text-neutral-500">Slug</label>
             <div className="flex items-center border border-neutral-800 focus-within:border-white">
+              <span className="px-3 text-sm text-neutral-500">/app/</span>
               <input
                 value={displaySlug}
                 onInput={(e) => { setSlug((e.target as HTMLInputElement).value); setTouchedSlug(true); }}
                 placeholder="my-todo-app"
                 className="min-w-0 flex-1 bg-black px-3 py-2 text-white outline-none"
               />
-              <span className="px-3 text-sm text-neutral-500">.boglet.app</span>
             </div>
             <p className="mt-1 font-mono text-xs text-neutral-600">lowercase letters, numbers, dashes</p>
           </div>
@@ -699,7 +621,7 @@ function AppDetail({ slug }: { slug: string }) {
               <h1 className="text-3xl font-bold">{data.app.name}</h1>
               <StatusDot status={data.app.statusBadge} />
             </div>
-            <p className="mt-1 font-mono text-sm text-neutral-500">{data.app.slug}.boglet.app · {data.app.region}</p>
+            <p className="mt-1 font-mono text-sm text-neutral-500">/app/{data.app.slug}</p>
             <p className="mt-2 max-w-2xl text-sm text-neutral-400">{data.app.description || <span className="text-neutral-700">no description</span>}</p>
           </div>
           <div className="flex gap-2">
@@ -736,13 +658,12 @@ function AppDetail({ slug }: { slug: string }) {
 function OverviewTab({ app, active }: { app: AppRow; active: DeployRow | null }) {
   const stats = [
     { label: "Active version", value: active ? "v" + active.version : "—" },
-    { label: "Region", value: app.region },
     { label: "Visibility", value: app.isPublic ? "public" : "private" },
     { label: "Last deploy", value: active ? formatTimeAgo(active.createdAt) : "—" },
   ];
   return (
     <div>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-3 gap-4">
         {stats.map((s) => (
           <div key={s.label} className="border border-neutral-900 p-4">
             <p className="text-xs uppercase tracking-wider text-neutral-500">{s.label}</p>
@@ -843,13 +764,12 @@ function MetricsTab({ appId }: { appId: string }) {
   const errorRate = requests === 0 ? 0 : (errors / requests) * 100;
   return (
     <div>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <div className="border border-neutral-900 p-4"><p className="text-xs uppercase tracking-wider text-neutral-500">Requests (all-time)</p><p className="mt-1 text-2xl font-bold">{requests.toLocaleString()}</p></div>
         <div className="border border-neutral-900 p-4"><p className="text-xs uppercase tracking-wider text-neutral-500">Errors</p><p className="mt-1 text-2xl font-bold">{errors.toLocaleString()}</p></div>
         <div className="border border-neutral-900 p-4"><p className="text-xs uppercase tracking-wider text-neutral-500">Error rate</p><p className="mt-1 text-2xl font-bold">{errorRate.toFixed(2)}%</p></div>
-        <div className="border border-neutral-900 p-4"><p className="text-xs uppercase tracking-wider text-neutral-500">p99 latency</p><p className="mt-1 text-2xl font-bold">41ms</p></div>
       </div>
-      <p className="mt-8 text-xs text-neutral-600">Hourly bucket aggregation. Higher-resolution metrics available on Enterprise.</p>
+      <p className="mt-8 text-xs text-neutral-600">Counted at the dispatch boundary, bucketed by hour. Latency tracking isn't shipped yet.</p>
     </div>
   );
 }
@@ -1222,10 +1142,8 @@ function Runner({ slug, subPath }: { slug: string; subPath: string }) {
         <div className="flex items-center gap-3">
           <Link href="/" className="font-bold text-white">Boglet</Link>
           <span className="text-neutral-700">/</span>
-          <span className="font-mono text-neutral-400">{slug}.boglet.app</span>
+          <span className="font-mono text-neutral-400">/app/{slug}</span>
           <span className="border border-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500">v{data.version}</span>
-          <span className="text-neutral-700">·</span>
-          <span className="text-neutral-500">{data.app.region}</span>
         </div>
         <a href="#/" className="text-neutral-500 hover:text-white">Make your own →</a>
       </div>

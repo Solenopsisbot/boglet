@@ -1,69 +1,78 @@
-# Boglet [alpha]
+# Boglet
 
-> Let the agents build. Get out of their way.
+A tiny PaaS that lives inside one [Lakebed](https://lakebed.dev/) capsule.
 
-Boglet is the agent-native cloud platform for the post-IDE era. Deploy capsules with a single command. Scale to zero between requests. Pay only for what your agents ship.
+Sign in with Google, author a capsule as a JSON manifest (schema + queries + mutations + HTML pages), deploy it. Visitors run it through a sandboxed iframe with a `postMessage` bridge to a budget-bounded interpreter. That's the whole thing.
 
-Boglet runs on Boglet.
+## What's actually here
 
-(Specifically: Boglet is one Lakebed capsule that pretends to be a cloud platform. Users sign up, "deploy capsules" — really JSON manifests describing schema, queries, mutations, and HTML pages — and visitors run those capsules through an iframe + postMessage bridge. The platform's own landing page is, at one level removed, served as a Boglet app deployed on Boglet. It's bits all the way down.)
+- **Manifests are JSON.** No bundler, no npm install, no compile step. Capsules are typed AST documents that round-trip through the database.
+- **Sandboxed iframe runner.** User pages render in `<iframe sandbox="allow-scripts">` with a small `window.boglet` helper exposing `query()`, `mutation()`, `auth()`, `onReady()`.
+- **Partition-scoped data.** Every row in your capsule lives at `appTable = "{appId}__{tableName}"`. The interpreter cannot escape the partition.
+- **Budgeted interpreter** (pure TS in `shared/interpreter.ts`): 10k steps, depth 32, 100 db ops per call, 100KB per row.
+- **Logs · metrics · env vault** per app. Every dispatch is logged, counted, bucketed. Env vars stored with at-rest XOR obfuscation.
+- **Deploy history + rollback.** Every deploy is a versioned manifest. One click rolls back.
+- **Scheduled jobs.** `@minute / @hour / @day / every Nm/s/h/d` cron-style specs. Fired by the dashboard pulse.
 
-## What's in this repo
+## Repository layout
 
 ```
 boglet/
-├── server/index.ts          # schema (9 tables), interpreter glue, all handlers
-├── client/index.tsx         # one Preact SPA: landing, docs, dashboard, runner, editor
-├── shared/
-│   ├── dsl.ts               # the manifest AST (JSON-serializable)
-│   ├── interpreter.ts       # pure-TS evaluator for query/mutation defs
-│   ├── templates.ts         # todo / guestbook / counter / boglet / empty
-│   └── format.ts            # slug helpers, time ago, obfuscation for env vault
-└── README.md
+├── server/index.ts        # schema (9 tables) + interpreter glue + ~17 handlers
+├── client/index.tsx       # one Preact SPA: landing, docs, status, dashboard, runner, editor
+└── shared/
+    ├── dsl.ts             # the manifest AST
+    ├── interpreter.ts     # pure-TS evaluator
+    ├── templates.ts       # todo · guestbook · counter · boglet (recursive demo) · empty
+    └── format.ts          # slug, time-ago, obfuscation helpers
 ```
 
-One Lakebed capsule. No other dependencies. No bundler config. No `package.json`.
-
-## Architecture
-
-- **Multi-tenant via partition key**: every user-data row lives in the shared `rows` table, keyed by `appTable = "{appId}__{tableName}"`. The interpreter cannot escape the partition.
-- **Manifests are JSON**: schema, queries, mutations, pages — all data. No user JS is ever evaluated by `eval`/`Function`.
-- **Interpreter is pure-TS**: walks the AST, scoped row ops, step/depth/db-op budgets. Lives in `shared/interpreter.ts`.
-- **Iframe + postMessage bridge**: user pages render in `<iframe sandbox="allow-scripts">` with a tiny `window.boglet` helper that round-trips RPC through `parent.postMessage` → `useMutation("runUserCall")` → interpreter → result.
-- **Hash routing**: Lakebed only serves `/` — so the SPA uses `#/dashboard`, `#/app/foo`, etc.
-- **Single dispatch entrypoint**: both user queries and user mutations route through `runUserCall(slug, name, args)` because Lakebed's `useQuery` doesn't take dynamic args at call time.
+One Lakebed capsule. No other dependencies. No `package.json`.
 
 ## Running locally
 
 ```sh
 npx lakebed dev
-# open http://localhost:3000
+# http://localhost:3000
 ```
 
-The first time someone visits `#/`, the client fires `seedSystemApps` which idempotently creates the recursive `boglet` app at `#/app/boglet`. Owner of that synthetic app is `"system"`.
+The first time someone loads the page, `seedSystemApps` runs idempotently and creates the recursive `boglet` app at `#/app/boglet` under a synthetic `system` user.
 
 ## Deploying
 
 ```sh
-# Anonymous (no Google env, no outbound fetch — fine for the demo):
-npx lakebed deploy
-
-# To get a real subdomain (and outbound fetch for webhooks):
-npx lakebed claim
-npx lakebed deploy
-npx lakebed domains add boglet.lakebed.app
+npx lakebed deploy    # anonymous deploy — gives a temp URL
+npx lakebed claim     # if you want hosted env or outbound fetch
+npx lakebed deploy    # again, claimed this time
 ```
 
-## The bit
+## DSL quick reference
 
-The funnier you keep it, the harder it lands. Lean into the straight-faced enterprise voice in the marketing pages — that's the joke. The pages are real Preact components rendering a real (tiny, but real) PaaS that lives in one capsule on Lakebed.
+Expressions:
 
-## What's not in v1
+```json
+{ "literal": "hello" }
+{ "var": "ctx.userId" }                        // dot-path into ctx, args, or any let-bound name
+{ "call": "now", "args": [] }                  // builtins: now, uuid, len, concat, lower, upper, trim, slice, toString, parseInt, parseFloat, not, isEmpty, coalesce, min, max
+{ "op": "+", "a": ..., "b": ... }              // op: + - * / % == != < <= > >= && || concat
+{ "obj": { "k": expr } }
+{ "arr": [ expr ] }
+```
 
-- Per-app fingerprints, IP allow-list, custom regions (currently `pickRegion` is deterministic hash)
-- Real webhooks (requires claimed deploy + outbound fetch)
-- Structured manifest editor (current editor is JSON textarea + lint button)
-- Full cron parser (currently supports `@minute`, `@hour`, `@day`, `every Nm/s/h/d`)
-- Aggregate queries (count/sum/avg) in the DSL
+Statements:
 
-Built with maximum sincerity.
+```json
+{ "stmt": "let", "name": "x", "value": expr }
+{ "stmt": "if", "cond": expr, "then": [...], "else": [...] }
+{ "stmt": "for", "of": expr, "as": "row", "body": [...] }
+{ "stmt": "query", "name": "rows", "from": "todos", "where": [...], "orderBy": [...], "limit": N }
+{ "stmt": "insert", "table": "todos", "data": objExpr }
+{ "stmt": "update", "table": "todos", "id": expr, "patch": objExpr }
+{ "stmt": "delete", "table": "todos", "id": expr }
+{ "stmt": "log", "message": expr }
+{ "stmt": "return", "value": expr }
+```
+
+## License
+
+MIT.

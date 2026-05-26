@@ -45,34 +45,24 @@ function newRowKey(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-// Tiny scratch-pad seeded log lines for fake "deploy" output.
-const DEPLOY_LOG_LINES = [
-  "Resolving capsule manifest...",
-  "Validating schema (% tables, % queries, % mutations)...",
-  "Provisioning isolated runtime in %REGION%...",
-  "Negotiating edge route table...",
-  "Compiling DSL to source IR...",
-  "Hot-swapping previous version (zero-downtime cutover)...",
-  "Warming up regional caches at AMS, NRT, IAD, SYD...",
-  "Verifying TLS certificate chain...",
-  "Subscribing to upstream metric stream...",
-  "Health check: 200 OK in 41ms",
-  "Deploy completed in %ELAPSED%ms",
-];
+// Honest deploy log lines — describing what the server actually does on deploy.
+// (Earlier drafts had "Provisioning EC2 instances" and "Warming regional caches"
+// — those aren't real things Boglet does.)
 
-function makeDeployLogs(manifest: Manifest, region: string): string[] {
+function makeDeployLogs(manifest: Manifest, _region: string): string[] {
   const tableCount = Object.keys(manifest.schema.tables).length;
   const queryCount = Object.keys(manifest.queries).length;
   const mutationCount = Object.keys(manifest.mutations).length;
-  const elapsed = 2400 + Math.floor(Math.random() * 1800);
-  return DEPLOY_LOG_LINES.map((line) =>
-    line
-      .replace("%REGION%", region)
-      .replace("%ELAPSED%", String(elapsed))
-      .replace("% tables", tableCount + " tables")
-      .replace("% queries", queryCount + " queries")
-      .replace("% mutations", mutationCount + " mutations")
-  );
+  const pageCount = Object.keys(manifest.pages).length;
+  return [
+    "Parsing manifest JSON...",
+    "Validating shape: " + tableCount + " table(s), " + queryCount + " query(s), " + mutationCount + " mutation(s), " + pageCount + " page(s)",
+    "Allocating new version number",
+    "Storing manifest blob",
+    "Writing deploy log entries",
+    "Repointing apps.activeDeployId",
+    "Done",
+  ];
 }
 
 // ---------- RowOps factory ----------
